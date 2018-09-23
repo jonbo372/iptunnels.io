@@ -1,5 +1,6 @@
 package io.iptunnels.netty;
 
+import io.iptunnels.proto.PayloadPacket;
 import io.iptunnels.proto.TunnelPacket;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
@@ -19,6 +20,9 @@ public class TunnelFramerVersion1 implements TunnelFramer {
     private HiDecodingState hiState = HiDecodingState.HEADER;
     private int tunnelId;
     private int breakoutLength;
+
+    private PayloadDecodingState payloadState = PayloadDecodingState.HEADER;
+    private int payloadLength;
 
     @Override
     public Optional<TunnelPacket> process(final ChannelHandlerContext ctx, final ByteBuf in) {
@@ -70,10 +74,6 @@ public class TunnelFramerVersion1 implements TunnelFramer {
         }
     }
 
-    private Optional<TunnelPacket> processPayload(final ByteBuf in) {
-        return Optional.empty();
-    }
-
     private Optional<TunnelPacket> processHi(final ByteBuf in) {
         switch (hiState) {
             case HEADER:
@@ -99,6 +99,31 @@ public class TunnelFramerVersion1 implements TunnelFramer {
         return Optional.empty();
     }
 
+    private Optional<TunnelPacket> processPayload(final ByteBuf in) {
+        switch (payloadState) {
+            case HEADER:
+                if (in.readableBytes() >= 4) {
+                    tunnelId = in.readInt();
+                    payloadLength = in.readInt();
+                    payloadState = PayloadDecodingState.BODY;
+                }
+                break;
+            case BODY:
+                if (in.readableBytes() >= payloadLength) {
+                    final byte[] raw = new byte[payloadLength];
+                    in.readBytes(raw);
+                    final PayloadPacket payload = TunnelPacket.payload(tunnelId, raw);
+                    tunnelId = 0;
+                    payloadLength = 0;
+                    payloadState = PayloadDecodingState.HEADER;
+                    return Optional.of(payload);
+                }
+                break;
+        }
+
+        return Optional.empty();
+    }
+
     private void processHeader(final ByteBuf in) {
         if (in.readableBytes() >= 3) {
             final ByteBuf header = in.readBytes(3);
@@ -106,10 +131,10 @@ public class TunnelFramerVersion1 implements TunnelFramer {
             final byte b = header.getByte(1);
             final byte c = header.getByte(2);
 
-            if (a == 'H' && b == 'E' && c == 'L') {
-                state = DecodingState.HELLO;
-            } else if (a == 'P' && b == 'L' && c == 'D') {
+            if (a == 'P' && b == 'L' && c == 'D') {
                 state = DecodingState.PAYLOAD;
+            } else if (a == 'H' && b == 'E' && c == 'L') {
+                state = DecodingState.HELLO;
             } else if (a == 'H' && b == 'I' && c == 'I') {
                 state = DecodingState.HI;
             } else {
@@ -128,6 +153,10 @@ public class TunnelFramerVersion1 implements TunnelFramer {
 
     private enum HiDecodingState {
         HEADER, URL;
+    }
+
+    private enum PayloadDecodingState {
+        HEADER, BODY;
     }
 
 }

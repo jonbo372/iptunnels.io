@@ -43,10 +43,18 @@ public class BackboneFactory extends ChannelInitializer {
         final CompletableFuture<TunnelBackbone> future = new CompletableFuture();
         final ChannelFuture cf = bootstrap.connect(host, port);
         cf.addListener(f -> {
-            System.err.println("Connected successfully? " + f.isSuccess());
+            // System.err.println("Connected successfully? " + f.isSuccess());
+            if (!f.isSuccess()) {
+                System.err.println("ERROR unable to connect to remote server");
+            }
+
             final Channel channel = cf.channel();
             final TunnelBackbone backbone = new TunnelBackbone(channel);
             channel.pipeline().addLast(backbone);
+
+            // TODO: shouldn't actually complete the future until the Hello/Hi exchange
+            // has taken place...
+            backbone.hello();
             future.complete(backbone);
         });
 

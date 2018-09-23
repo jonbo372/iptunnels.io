@@ -1,5 +1,7 @@
 package io.iptunnels.server;
 
+import io.iptunnels.Tunnel;
+import io.iptunnels.netty.TunnelBackbone;
 import io.iptunnels.proto.HelloPacket;
 import io.iptunnels.proto.PayloadPacket;
 import io.iptunnels.proto.TunnelPacket;
@@ -33,13 +35,21 @@ public class ServerHandler extends ChannelInboundHandlerAdapter {
 
     private void processPayload(final PayloadPacket pkt) {
         System.err.println("Processing payload");
+        System.err.println(new String(pkt.getBody()));
     }
 
     private void processHello(final ChannelHandlerContext ctx, final HelloPacket pkt) {
         final int tunnelId = random.nextInt();
-        final String url = "127.0.0.1:8907";
-        System.err.println("Sending hi back");
-        ctx.writeAndFlush(TunnelPacket.hi(tunnelId, url), ctx.voidPromise());
+        // Ah, this is how we will do it. Now we will remove the ServerHandler from the pipeline
+        // and have the tunnelbackbone as the handler going forward. So this server handler
+        // is really the initiator.
+        final TunnelBackbone backbone = new TunnelBackbone(ctx.channel());
+
+        Tunnel.of(backbone).bind("10.36.10.27", 7890).thenAccept(tunnel -> {
+            final String url = tunnel.getLocalHost() + ":" + tunnel.getLocalPort();
+            System.err.println("Sending hi back");
+            ctx.writeAndFlush(TunnelPacket.hi(tunnelId, url), ctx.voidPromise());
+        });
     }
 
     @Override

@@ -10,6 +10,10 @@ public interface TunnelPacket {
         return new HiPacket.HiPacketVersion1(tunnelId, url);
     }
 
+    static PayloadPacket payload(final int tunnelId, final byte[] data) {
+        return new PayloadPacket.PayloadPacketVersion1(tunnelId, data);
+    }
+
     default boolean isHi() {
         return false;
     }

@@ -11,6 +11,8 @@ public class ClientHandler extends ChannelInboundHandlerAdapter {
         final TunnelPacket pkt = (TunnelPacket)msg;
         if (pkt.isHi()) {
             System.err.println("Server says hi!");
+        } else {
+            System.err.println("ClientHandler not handling packet: " + pkt);
         }
     }
 
