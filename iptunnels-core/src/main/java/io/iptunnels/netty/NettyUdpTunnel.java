@@ -82,6 +82,16 @@ public class NettyUdpTunnel extends ChannelInboundHandlerAdapter implements Tunn
         return localUdpAddress.getHostString();
     }
 
+    @Override
+    public InetSocketAddress getTunnelAddress() {
+        return backbone.getTunnelAddress();
+    }
+
+    @Override
+    public InetSocketAddress getTargetAddress() {
+        return remoteTarget;
+    }
+
     /**
      * Could implement firewall filtering or whatever.
      *
@@ -107,8 +117,14 @@ public class NettyUdpTunnel extends ChannelInboundHandlerAdapter implements Tunn
 
     private void processUdpPacket(final ChannelHandlerContext ctx, final DatagramPacket udp) {
         final InetSocketAddress sender = udp.sender();
+        System.err.println("Accepting UDP packet from " + sender);
         if (accept(sender)) {
-            if (remoteTarget != null) {
+            if (remoteTarget == null) {
+                remoteTarget = sender;
+            }
+
+            if (!sender.equals(remoteTarget)) {
+                System.err.println("WTF - the remote target has changed!");
                 remoteTarget = sender;
             }
 
@@ -122,6 +138,7 @@ public class NettyUdpTunnel extends ChannelInboundHandlerAdapter implements Tunn
 
     private void processTunnelPacket(final ChannelHandlerContext ctx, final TunnelPacket pkt) {
         if (pkt.isPayload() && remoteTarget != null) {
+            System.err.println("Sending tunneled data to " + remoteTarget);
             final ByteBuf data = toByteBuf(channel, pkt.toPayload().getBody());
             final DatagramPacket udp = new DatagramPacket(data, remoteTarget);
             channel.writeAndFlush(udp);

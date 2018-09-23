@@ -8,6 +8,8 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 
+import java.net.InetSocketAddress;
+
 /**
  * The {@link TunnelBackbone} is the link between the client and server through which
  * we will transport all the raw messages we are receiving at either end of
@@ -56,13 +58,20 @@ public class TunnelBackbone extends ChannelInboundHandlerAdapter {
     @Override
     public void channelRead(final ChannelHandlerContext ctx, final Object msg) {
         final TunnelPacket pkt = (TunnelPacket)msg;
+        System.err.println("Received a message");
         if (pkt.isPayload()) {
             ctx.fireChannelRead(msg);
         } else if (pkt.isHi()) {
-            // System.err.println("Backbone: consuming the HI packet");
+            System.err.println("Backbone: consuming the HI packet");
             tunnelConfig = pkt.toHi();
             // System.err.println("our remote breakout address is " + tunnelConfig.breakoutAddress());
         }
+    }
+
+    public InetSocketAddress getTunnelAddress() {
+        final String[] parts = tunnelConfig.breakoutAddress().split(":") ;
+        final InetSocketAddress address = new InetSocketAddress(parts[0], Integer.parseInt(parts[1]));
+        return address;
     }
 
     public void hello() {

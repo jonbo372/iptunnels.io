@@ -58,6 +58,16 @@ public interface Tunnel {
     String getLocalHost();
 
     /**
+     * This is our public tunnel address, i.e. the one we advertise to the world and is then relayed
+     * to our local machine and onto the {@link #getTargetAddress()}.
+     *
+     * @return
+     */
+    InetSocketAddress getTunnelAddress();
+
+    InetSocketAddress getTargetAddress();
+
+    /**
      * TODO: we really should have a build stepper thingie here because we either have to
      * connect to the server or we are on the server side that accepted a new TCP backbone
      * connection and as such, will create the backbone first then create the Udp tunnel with
