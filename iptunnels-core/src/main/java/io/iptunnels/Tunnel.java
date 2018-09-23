@@ -12,6 +12,8 @@ import io.netty.channel.socket.DatagramChannel;
 import io.netty.channel.socket.nio.NioDatagramChannel;
 
 import java.net.InetSocketAddress;
+import java.net.SocketAddress;
+import java.net.URI;
 import java.util.concurrent.CompletionStage;
 
 /**
@@ -19,8 +21,21 @@ import java.util.concurrent.CompletionStage;
  */
 public interface Tunnel {
 
+    static Builder udp(final String serverAddress) {
+        final URI uri = URI.create("http://" + serverAddress);
+        final int port = uri.getPort();
+        final String host = uri.getHost();
+        System.err.println(host);
+        System.err.println(port);
+        return udp(host, port);
+    }
+
     static Builder udp(final String serverAddress, final int serverPort) {
-        return new Builder(Transport.UDP, serverAddress, serverPort);
+        return new Builder(Transport.UDP, new InetSocketAddress(serverAddress, serverPort));
+    }
+
+    static Builder udp(final SocketAddress serverAddress) {
+        return new Builder(Transport.UDP, serverAddress);
     }
 
     /**
@@ -141,19 +156,17 @@ public interface Tunnel {
     class Builder {
 
         private final Transport transport;
-        private final String serverAddress;
-        private final int serverPort;
 
         private InetSocketAddress targetAddress;
+        private final SocketAddress serverAddress;
 
 
         // whatever...
         private final BackboneFactory factory = BackboneFactory.SINGLETON;
 
-        private Builder(final Transport transport, final String serverAddress, final int serverPort) {
+        private Builder(final Transport transport, final SocketAddress serverAddress) {
             this.transport = transport;
             this.serverAddress = serverAddress;
-            this.serverPort = serverPort;
         }
 
         public Builder withTargetAddress(final String ip, final int port) {
@@ -162,8 +175,9 @@ public interface Tunnel {
         }
 
         public CompletionStage<Tunnel> connect() {
+            System.err.println("Connecting to: " + serverAddress);
 
-            return factory.connect(serverAddress, serverPort).thenCompose(tunnelBackbone -> {
+            return factory.connect(serverAddress).thenCompose(tunnelBackbone -> {
                 System.err.println("Got the backbone, now building up the tunnel");
                 // build up the rest of the tunnel...
 

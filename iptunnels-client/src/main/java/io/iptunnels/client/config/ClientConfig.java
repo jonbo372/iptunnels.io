@@ -1,10 +1,17 @@
 package io.iptunnels.client.config;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 public class ClientConfig {
 
-    private final String server;
+    @JsonProperty("version")
+    private final int version = 1;
 
-    public ClientConfig(final String server) {
-        this.server = server;
+    @JsonProperty("server")
+    private final String server = "iptunnels.io:8000";
+
+    public String getServer() {
+        return server;
     }
+
 }

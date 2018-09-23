@@ -2,6 +2,7 @@ package io.iptunnels.client;
 
 import io.iptunnels.Tunnel;
 import io.iptunnels.client.config.ClientConfig;
+import io.iptunnels.config.ConfigurationEnvironment;
 
 public class Client {
 
@@ -20,14 +21,18 @@ public class Client {
         // the iptunnels.io server.
         // final String host = "127.0.0.1";
         // final String host = "104.248.212.248";
-        final String host = "159.89.220.227";
-        final int port = 8000;
+        // final String host = "159.89.220.227";
+        // final int port = 8000;
+
+        final ConfigurationEnvironment<ClientConfig> configEnv = ConfigurationEnvironment.of(ClientConfig.class).withProjectName("iptunnels").build();
+        // configEnv.init();
+        final ClientConfig config = configEnv.loadConfig();
 
         // the local target to which we will relay all packets.
         final String targetHost = "127.0.0.1";
         final int targetPort = 5683;
 
-        final Tunnel tunnel = Tunnel.udp(host, port).withTargetAddress(targetHost, targetPort).connect().toCompletableFuture().get();
+        final Tunnel tunnel = Tunnel.udp(config.getServer()).withTargetAddress(targetHost, targetPort).connect().toCompletableFuture().get();
         Thread.sleep(500);
         System.out.println("Tunnel Session Online");
         System.out.println("Forwarding: " + tunnel.getTunnelAddress() + " <--> " + tunnel.getTargetAddress());

@@ -51,6 +51,7 @@
         <jackson.version>2.5.3</jackson.version>
         <metrics.version>3.1.0</metrics.version>
         <netty.version>4.1.29.Final</netty.version>
+        <snakeyaml.version>1.23</snakeyaml.version>
     </properties>
 
     <modules>
@@ -110,7 +111,15 @@
                 <scope>compile</scope>
             </dependency>
 
-            <!-- Only for the Hashweeled Timer -->
+            <dependency>
+                <groupId>org.yaml</groupId>
+                <artifactId>snakeyaml</artifactId>
+                <version>${snakeyaml.version}</version>
+                <type>jar</type>
+                <scope>compile</scope>
+            </dependency>
+
+            <!-- Netty for all our networking needs-->
             <dependency>
                 <groupId>io.netty</groupId>
                 <artifactId>netty-all</artifactId>
@@ -118,7 +127,6 @@
                 <type>jar</type>
                 <scope>compile</scope>
             </dependency>
-
 
             <!-- Test Dependencies -->
             <dependency>

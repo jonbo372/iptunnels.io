@@ -47,9 +47,9 @@ public class ServerHandler extends ChannelInboundHandlerAdapter {
         // is really the initiator.
         final TunnelBackbone backbone = new TunnelBackbone(ctx.channel());
 
-        final String ip = "104.248.212.248";
+        // final String ip = "104.248.212.248";
         // final String ip = "10.46.0.5";
-        // String ip = "10.36.10.27";
+        final String ip = "10.36.10.27";
         Tunnel.of(backbone).bind(ip, 7890).thenAccept(tunnel -> {
             final String url = tunnel.getLocalHost() + ":" + tunnel.getLocalPort();
             System.err.println("Sending hi back");

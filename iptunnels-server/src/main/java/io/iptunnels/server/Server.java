@@ -1,6 +1,7 @@
 package io.iptunnels.server;
 
 import io.iptunnels.Clock;
+import io.iptunnels.config.ConfigurationEnvironment;
 import io.iptunnels.netty.TunnelPacketStreamDecoder;
 import io.iptunnels.netty.TunnelPacketStreamEncoder;
 import io.netty.bootstrap.Bootstrap;
@@ -31,14 +32,13 @@ public class Server {
      */
     private Bootstrap bootstrap;
 
-    public Server() {
+    private final ServerConfig config;
 
+    public Server(final ServerConfig config) {
+        this.config = config;
     }
 
     public void run() throws InterruptedException {
-
-        final int port = 8000;
-
         final EventLoopGroup bossGroup = new NioEventLoopGroup();
         final EventLoopGroup workerGroup = new NioEventLoopGroup();
         final ServerHandler handler = new ServerHandler();
@@ -60,7 +60,7 @@ public class Server {
                     .childOption(ChannelOption.SO_KEEPALIVE, true);
 
             // Bind and start to accept incoming connections.
-            final ChannelFuture f = b.bind(port).sync();
+            final ChannelFuture f = b.bind(config.getListenAddress()).sync();
 
             // Wait until the server socket is closed.
             // In this example, this does not happen, but you can do that to gracefully
@@ -73,7 +73,8 @@ public class Server {
     }
 
     public static void main(final String... args) throws Exception {
-        new Server().run();
+        final ConfigurationEnvironment<ServerConfig> env = ConfigurationEnvironment.of(ServerConfig.class).withProjectName("iptunnels_server").build();
+        new Server(env.loadConfig()).run();
 
     }
 }

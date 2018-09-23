@@ -10,6 +10,8 @@ import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
 
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
@@ -39,9 +41,9 @@ public class BackboneFactory extends ChannelInitializer {
         pipeline.addLast("encoder", encoder);
     }
 
-    public CompletionStage<TunnelBackbone> connect(final String host, final int port) {
+    public CompletionStage<TunnelBackbone> connect(SocketAddress remote) {
         final CompletableFuture<TunnelBackbone> future = new CompletableFuture();
-        final ChannelFuture cf = bootstrap.connect(host, port);
+        final ChannelFuture cf = bootstrap.connect(remote);
         cf.addListener(f -> {
             // System.err.println("Connected successfully? " + f.isSuccess());
             if (!f.isSuccess()) {
@@ -59,5 +61,10 @@ public class BackboneFactory extends ChannelInitializer {
         });
 
         return future;
+
+    }
+
+    public CompletionStage<TunnelBackbone> connect(final String host, final int port) {
+        return connect(new InetSocketAddress(host, port));
     }
 }
