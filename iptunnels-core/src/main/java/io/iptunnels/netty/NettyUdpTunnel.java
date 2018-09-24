@@ -2,7 +2,7 @@ package io.iptunnels.netty;
 
 import io.iptunnels.Transport;
 import io.iptunnels.Tunnel;
-import io.iptunnels.TunnelIdentifier;
+import io.iptunnels.proto.HiPacket;
 import io.iptunnels.proto.PayloadPacket;
 import io.iptunnels.proto.TunnelPacket;
 import io.netty.bootstrap.Bootstrap;
@@ -17,6 +17,9 @@ import io.netty.channel.socket.DatagramPacket;
 import java.net.InetSocketAddress;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 @ChannelHandler.Sharable
 public class NettyUdpTunnel extends ChannelInboundHandlerAdapter implements Tunnel {
@@ -33,6 +36,10 @@ public class NettyUdpTunnel extends ChannelInboundHandlerAdapter implements Tunn
      */
     private final TunnelBackbone backbone;
 
+    private final int tunnelId;
+
+    private final AtomicReference<HiPacket> tunnelConfig = new AtomicReference<>();
+
     /**
      * The target to which we will relay all data we receive over the backbone.
      */
@@ -43,8 +50,12 @@ public class NettyUdpTunnel extends ChannelInboundHandlerAdapter implements Tunn
      */
     private final InetSocketAddress localUdpAddress;
 
-    private NettyUdpTunnel(final Channel channel, final TunnelBackbone backbone, final InetSocketAddress remoteTarget) {
+    // TODO: stupid - should simply not return the tunnel until the hi/hello exchange has taken place.
+    private final CountDownLatch hiReceived = new CountDownLatch(1);
+
+    private NettyUdpTunnel(final Channel channel, final int tunnelId, final TunnelBackbone backbone, final InetSocketAddress remoteTarget) {
         this.channel = channel;
+        this.tunnelId = tunnelId;
         this.backbone = backbone;
         this.remoteTarget = remoteTarget;
 
@@ -63,8 +74,12 @@ public class NettyUdpTunnel extends ChannelInboundHandlerAdapter implements Tunn
     }
 
     @Override
-    public TunnelIdentifier getId() {
-        return null;
+    public int getId() {
+        // TODO: change so that we always have the TunnelConfig HiPacket
+        if (tunnelConfig.get() != null) {
+            return tunnelConfig.get().tunnelId();
+        }
+        return tunnelId;
     }
 
     @Override
@@ -84,12 +99,29 @@ public class NettyUdpTunnel extends ChannelInboundHandlerAdapter implements Tunn
 
     @Override
     public InetSocketAddress getTunnelAddress() {
-        return backbone.getTunnelAddress();
+        try {
+            hiReceived.await(3000, TimeUnit.MILLISECONDS);
+        } catch (final InterruptedException e) {
+            // ignore
+        }
+        final String[] parts = tunnelConfig.get().breakoutAddress().split(":") ;
+        final InetSocketAddress address = new InetSocketAddress(parts[0], Integer.parseInt(parts[1]));
+        return address;
     }
 
     @Override
     public InetSocketAddress getTargetAddress() {
         return remoteTarget;
+    }
+
+    @Override
+    public void shutdown() {
+        channel.close().addListener(f -> {
+            if (!f.isSuccess()) {
+                // TODO: log and deal with it using real loggers.
+                System.err.println("Unable to shut down tunnel. Ports may linger");
+            }
+        });
     }
 
     /**
@@ -105,7 +137,8 @@ public class NettyUdpTunnel extends ChannelInboundHandlerAdapter implements Tunn
     @Override
     public void channelRead(final ChannelHandlerContext ctx, final Object msg) {
         if (msg instanceof TunnelPacket) {
-            processTunnelPacket(ctx, (TunnelPacket)msg);
+            System.err.println("NettyUdpTunnel: I shouldn't receive any tunnel packets through the backbone netty pipeline anymore");
+            // process((TunnelPacket)msg);
         } else if (msg instanceof DatagramPacket) {
             processUdpPacket(ctx, (DatagramPacket)msg);
         } else {
@@ -117,31 +150,33 @@ public class NettyUdpTunnel extends ChannelInboundHandlerAdapter implements Tunn
 
     private void processUdpPacket(final ChannelHandlerContext ctx, final DatagramPacket udp) {
         final InetSocketAddress sender = udp.sender();
-        System.err.println("Accepting UDP packet from " + sender);
         if (accept(sender)) {
             if (remoteTarget == null) {
                 remoteTarget = sender;
             }
 
             if (!sender.equals(remoteTarget)) {
-                System.err.println("WTF - the remote target has changed!");
                 remoteTarget = sender;
             }
 
             final ByteBuf content = udp.content();
             final byte[] rawData = new byte[content.readableBytes()];
             content.getBytes(0, rawData);
-            final PayloadPacket pkt = TunnelPacket.payload(backbone.getTunnelId(), rawData);
+            // final PayloadPacket pkt = TunnelPacket.payload(backbone.getTunnelId(), rawData);
+            final PayloadPacket pkt = TunnelPacket.payload(tunnelId, rawData);
             backbone.tunnel(pkt);
         }
     }
 
-    private void processTunnelPacket(final ChannelHandlerContext ctx, final TunnelPacket pkt) {
+    @Override
+    public void process(final TunnelPacket pkt) {
         if (pkt.isPayload() && remoteTarget != null) {
-            System.err.println("Sending tunneled data to " + remoteTarget);
             final ByteBuf data = toByteBuf(channel, pkt.toPayload().getBody());
             final DatagramPacket udp = new DatagramPacket(data, remoteTarget);
             channel.writeAndFlush(udp);
+        } else if (pkt.isHi()) {
+            tunnelConfig.set(pkt.toHi());
+            hiReceived.countDown();
         }
     }
 
@@ -160,6 +195,7 @@ public class NettyUdpTunnel extends ChannelInboundHandlerAdapter implements Tunn
         private final TunnelBackbone backbone;
         private Bootstrap bootstrap;
         private InetSocketAddress remoteTarget;
+        private int tunnelId;
 
         private Builder(final TunnelBackbone backbone) {
             this.backbone = backbone;
@@ -185,6 +221,11 @@ public class NettyUdpTunnel extends ChannelInboundHandlerAdapter implements Tunn
             return this;
         }
 
+        public Builder withId(final int id) {
+            tunnelId = id;
+            return this;
+        }
+
         public Builder withUdpBootstrap(final Bootstrap bootstrap) {
             this.bootstrap = bootstrap;
             return this;
@@ -204,16 +245,16 @@ public class NettyUdpTunnel extends ChannelInboundHandlerAdapter implements Tunn
                 final ChannelFuture channelFuture = (ChannelFuture)f;
                 if (channelFuture.isSuccess()) {
                     final Channel channel = channelFuture.channel();
-                    // System.err.println("My local UDP address is: " + channel.localAddress());
-                    final NettyUdpTunnel tunnel = new NettyUdpTunnel(channel, backbone, remoteTarget);
+                    final NettyUdpTunnel tunnel = new NettyUdpTunnel(channel, tunnelId, backbone, remoteTarget);
                     channel.pipeline().addLast("tunnel", tunnel);
 
                     // note that we have two different channels. This is the TCP channel going to
                     // the server and we want to be part of that pipeline as well.
-                    backbone.getChannel().pipeline().addLast("tunnel", tunnel);
+                    // TODO: the backbone should do this as part of its "manage" functionality
+                    // backbone.getChannel().pipeline().addLast("tunnel", tunnel);
                     future.complete(tunnel);
                 } else {
-                    System.err.println("Unable to bind I guess...");
+                    future.completeExceptionally(channelFuture.cause());
                 }
             });
             return future;

@@ -1,5 +1,6 @@
 package io.iptunnels.netty;
 
+import io.iptunnels.BackendInaccessibleException;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
@@ -35,29 +36,28 @@ public class BackboneFactory extends ChannelInitializer {
     }
 
     @Override
-    protected void initChannel(final Channel ch) throws Exception {
+    protected void initChannel(final Channel ch) {
         final ChannelPipeline pipeline = ch.pipeline();
         pipeline.addLast("decoder", new TunnelPacketStreamDecoder());
         pipeline.addLast("encoder", encoder);
     }
 
-    public CompletionStage<TunnelBackbone> connect(SocketAddress remote) {
+    public CompletionStage<TunnelBackbone> connect(final SocketAddress remote) {
         final CompletableFuture<TunnelBackbone> future = new CompletableFuture();
         final ChannelFuture cf = bootstrap.connect(remote);
         cf.addListener(f -> {
-            // System.err.println("Connected successfully? " + f.isSuccess());
-            if (!f.isSuccess()) {
-                System.err.println("ERROR unable to connect to remote server");
+            if (f.isSuccess()) {
+                final Channel channel = cf.channel();
+                final TunnelBackbone backbone = new TunnelBackbone(channel);
+                channel.pipeline().addLast("backbone", backbone);
+
+                // TODO: shouldn't actually complete the future until the Hello/Hi exchange
+                // has taken place...
+                backbone.hello();
+                future.complete(backbone);
+            } else {
+                future.completeExceptionally(new BackendInaccessibleException(remote, "Unable to connect to iptunnels server"));
             }
-
-            final Channel channel = cf.channel();
-            final TunnelBackbone backbone = new TunnelBackbone(channel);
-            channel.pipeline().addLast(backbone);
-
-            // TODO: shouldn't actually complete the future until the Hello/Hi exchange
-            // has taken place...
-            backbone.hello();
-            future.complete(backbone);
         });
 
         return future;

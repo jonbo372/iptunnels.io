@@ -2,9 +2,9 @@ package io.iptunnels.server;
 
 import io.iptunnels.Clock;
 import io.iptunnels.config.ConfigurationEnvironment;
+import io.iptunnels.netty.TunnelBackbone;
 import io.iptunnels.netty.TunnelPacketStreamDecoder;
 import io.iptunnels.netty.TunnelPacketStreamEncoder;
-import io.netty.bootstrap.Bootstrap;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelInitializer;
@@ -22,16 +22,6 @@ public class Server {
     private EventLoopGroup udpGroup;
     private Clock clock;
 
-    /**
-     * The TCP based bootstrap.
-     */
-    private ServerBootstrap serverBootstrap;
-
-    /**
-     * Our UDP based bootstrap.
-     */
-    private Bootstrap bootstrap;
-
     private final ServerConfig config;
 
     public Server(final ServerConfig config) {
@@ -41,7 +31,8 @@ public class Server {
     public void run() throws InterruptedException {
         final EventLoopGroup bossGroup = new NioEventLoopGroup();
         final EventLoopGroup workerGroup = new NioEventLoopGroup();
-        final ServerHandler handler = new ServerHandler();
+        // final ServerHandler handler = new ServerHandler();
+
         final TunnelPacketStreamEncoder encoder = new TunnelPacketStreamEncoder();
         try {
             final ServerBootstrap b = new ServerBootstrap();
@@ -53,7 +44,8 @@ public class Server {
                             final ChannelPipeline pipeline = ch.pipeline();
                             pipeline.addLast("decoder", new TunnelPacketStreamDecoder());
                             pipeline.addLast("encoder", encoder);
-                            pipeline.addLast(handler);
+                            // pipeline.addLast("init", handler);
+                            pipeline.addLast("backbone", new TunnelBackbone(ch));
                         }
                     })
                     .option(ChannelOption.SO_BACKLOG, 128)

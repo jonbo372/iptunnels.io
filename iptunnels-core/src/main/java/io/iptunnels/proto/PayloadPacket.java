@@ -16,6 +16,8 @@ public interface PayloadPacket extends TunnelPacket {
 
     byte[] getBody();
 
+    int getTunnelId();
+
     class PayloadPacketVersion1 implements PayloadPacket {
 
         private static final byte[] header = " 1PLD".getBytes();
@@ -28,8 +30,14 @@ public interface PayloadPacket extends TunnelPacket {
             this.data = data;
         }
 
+        @Override
         public byte[] getBody() {
             return data;
+        }
+
+        @Override
+        public int getTunnelId() {
+            return tunnelId;
         }
 
         @Override

@@ -3,6 +3,7 @@ package io.iptunnels;
 import io.iptunnels.netty.BackboneFactory;
 import io.iptunnels.netty.NettyUdpTunnel;
 import io.iptunnels.netty.TunnelBackbone;
+import io.iptunnels.proto.TunnelPacket;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelPipeline;
@@ -14,6 +15,7 @@ import io.netty.channel.socket.nio.NioDatagramChannel;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.net.URI;
+import java.util.Random;
 import java.util.concurrent.CompletionStage;
 
 /**
@@ -51,7 +53,7 @@ public interface Tunnel {
         return new ServerTunnelBuilder(backbone);
     }
 
-    TunnelIdentifier getId();
+    int getId();
 
     /**
      * This is the transport that is exposed by the {@link Tunnel}.
@@ -83,6 +85,15 @@ public interface Tunnel {
     InetSocketAddress getTargetAddress();
 
     /**
+     * Shutdown the tunnel again
+     *
+     * TODO: should probably return a future...
+     */
+    void shutdown();
+
+    void process(TunnelPacket pkt);
+
+    /**
      * TODO: we really should have a build stepper thingie here because we either have to
      * connect to the server or we are on the server side that accepted a new TCP backbone
      * connection and as such, will create the backbone first then create the Udp tunnel with
@@ -90,6 +101,9 @@ public interface Tunnel {
      */
     class ServerTunnelBuilder {
         private final TunnelBackbone backbone;
+
+        private final Random random = new Random(System.currentTimeMillis());
+
 
         private ServerTunnelBuilder(final TunnelBackbone backbone) {
             this.backbone = backbone;
@@ -114,6 +128,7 @@ public interface Tunnel {
         }
 
         public CompletionStage<Tunnel> bind(final InetSocketAddress localAddress) {
+            final int tunnelId = random.nextInt();
             return NettyUdpTunnel.withBackbone(backbone).withUdpBootstrap(UdpBootstrap.getBootstrap()).start(localAddress);
         }
 
@@ -174,21 +189,21 @@ public interface Tunnel {
             return this;
         }
 
+        public Builder withTargetAddress(final InetSocketAddress target) {
+            targetAddress = target;
+            return this;
+        }
+
         public CompletionStage<Tunnel> connect() {
             System.err.println("Connecting to: " + serverAddress);
 
             return factory.connect(serverAddress).thenCompose(tunnelBackbone -> {
-                System.err.println("Got the backbone, now building up the tunnel");
-                // build up the rest of the tunnel...
-
-                return NettyUdpTunnel.withBackbone(tunnelBackbone).withUdpBootstrap(UdpBootstrap.getBootstrap()).withTargetAddress(targetAddress).start(0);
-
-                /*
-                got to bind to localhost and forward packets to a given address. This is for the local
-                        stuff. On the server side we need to create a UDP "Tunnel Opening/Endpoint" or
-                        perhaps this is what the NettyUdpTunnel is for...
-                        */
-                // return new NettyUdpTunnel();
+                System.err.println("Got the backbone, now building up the tunnel " + tunnelBackbone.getChannel().id());
+                return NettyUdpTunnel.withBackbone(tunnelBackbone).withUdpBootstrap(UdpBootstrap.getBootstrap())
+                        .withTargetAddress(targetAddress).start(0).thenApply(tunnel -> {
+                            tunnelBackbone.manageTunnel(tunnel);
+                            return tunnel;
+                        });
             });
             /*
             .exceptionally(throwable -> {
