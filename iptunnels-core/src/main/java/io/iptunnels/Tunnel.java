@@ -2,6 +2,7 @@ package io.iptunnels;
 
 import io.iptunnels.netty.BackboneFactory;
 import io.iptunnels.netty.ClientSideBackbone;
+import io.iptunnels.netty.NettyBootstrap;
 import io.iptunnels.netty.NettyUdpTunnel;
 import io.iptunnels.netty.TunnelBackbone;
 import io.iptunnels.proto.TunnelPacket;
@@ -130,7 +131,7 @@ public interface Tunnel {
 
         public CompletionStage<Tunnel> bind(final InetSocketAddress localAddress) {
             final int tunnelId = random.nextInt();
-            return NettyUdpTunnel.withTunnelId(tunnelId).withBackbone(backbone).withUdpBootstrap(UdpBootstrap.getBootstrap()).start(localAddress);
+            return NettyUdpTunnel.withTunnelId(tunnelId).withBackbone(backbone).withUdpBootstrap(NettyBootstrap.getBootstrap()).start(localAddress);
         }
 
     }
@@ -207,7 +208,7 @@ public interface Tunnel {
                     return NettyUdpTunnel.withTunnelId(hi.tunnelId())
                             .withBackbone(tunnelBackbone)
                             .withBreakoutAddress(breakoutAddress)
-                            .withUdpBootstrap(UdpBootstrap.getBootstrap())
+                            .withUdpBootstrap(NettyBootstrap.getBootstrap())
                             .withTargetAddress(targetAddress)
                             .start(0).thenApply(tunnel -> {
                                 // TODO: not nice

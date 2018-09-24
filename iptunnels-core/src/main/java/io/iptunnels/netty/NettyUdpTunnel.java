@@ -11,12 +11,12 @@ import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.channel.ChannelPromise;
 import io.netty.channel.socket.DatagramPacket;
 
 import java.net.InetSocketAddress;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 
 @ChannelHandler.Sharable
@@ -52,9 +52,6 @@ public class NettyUdpTunnel extends ChannelInboundHandlerAdapter implements Tunn
      * the localUdpAddress.
      */
     private final InetSocketAddress breakoutAddress;
-
-    // TODO: stupid - should simply not return the tunnel until the hi/hello exchange has taken place.
-    private final CountDownLatch hiReceived = new CountDownLatch(1);
 
     private NettyUdpTunnel(final Channel channel, final int tunnelId, final TunnelBackbone backbone, final InetSocketAddress remoteTarget, final InetSocketAddress breakoutAddress) {
         this.channel = channel;
@@ -139,8 +136,16 @@ public class NettyUdpTunnel extends ChannelInboundHandlerAdapter implements Tunn
         } else {
             // TODO: log or something.
             // unknown packet, dropping...
+            System.err.println("[ERROR] NettyUdpTunnel Uknown packet type received");
         }
+    }
 
+    @Override
+    public void channelReadComplete(final ChannelHandlerContext ctx) throws Exception {
+        // ctx.flush();
+        backbone.flushTunnel();
+        ctx.fireChannelReadComplete();
+        // System.err.println("NettyUdpTunnel: channelReadComplete");
     }
 
     private void processUdpPacket(final ChannelHandlerContext ctx, final DatagramPacket udp) {
@@ -154,7 +159,8 @@ public class NettyUdpTunnel extends ChannelInboundHandlerAdapter implements Tunn
             final byte[] rawData = new byte[content.readableBytes()];
             content.getBytes(0, rawData);
             // final PayloadPacket pkt = TunnelPacket.payload(backbone.getTunnelId(), rawData);
-            System.out.println(new String(rawData));
+            // System.out.println(new String(rawData));
+
             final PayloadPacket pkt = TunnelPacket.payload(tunnelId, rawData);
             backbone.tunnel(pkt);
         }
@@ -166,7 +172,12 @@ public class NettyUdpTunnel extends ChannelInboundHandlerAdapter implements Tunn
         if (pkt.isPayload() && target != null) {
             final ByteBuf data = toByteBuf(channel, pkt.toPayload().getBody());
             final DatagramPacket udp = new DatagramPacket(data, target);
-            channel.writeAndFlush(udp);
+            final ChannelPromise p = channel.newPromise();
+            p.addListener(f -> {
+
+            });
+            channel.writeAndFlush(udp, p);
+            // channel.writeAndFlush(udp);
         } else if (pkt.isHi()) {
             System.err.println("NettyUdpTunnel: Why am I getting a HI message still?");
         }

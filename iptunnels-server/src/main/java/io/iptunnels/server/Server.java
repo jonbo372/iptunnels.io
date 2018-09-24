@@ -2,18 +2,9 @@ package io.iptunnels.server;
 
 import io.iptunnels.Clock;
 import io.iptunnels.config.ConfigurationEnvironment;
-import io.iptunnels.netty.ServerSideBackbone;
-import io.iptunnels.netty.TunnelPacketStreamDecoder;
-import io.iptunnels.netty.TunnelPacketStreamEncoder;
-import io.netty.bootstrap.ServerBootstrap;
+import io.iptunnels.netty.NettyBootstrap;
 import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelInitializer;
-import io.netty.channel.ChannelOption;
-import io.netty.channel.ChannelPipeline;
 import io.netty.channel.EventLoopGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
-import io.netty.channel.socket.SocketChannel;
-import io.netty.channel.socket.nio.NioServerSocketChannel;
 
 public class Server {
 
@@ -29,10 +20,17 @@ public class Server {
     }
 
     public void run() throws InterruptedException {
-        final EventLoopGroup bossGroup = new NioEventLoopGroup();
-        final EventLoopGroup workerGroup = new NioEventLoopGroup();
+        // final EventLoopGroup bossGroup = new NioEventLoopGroup();
+
+        // TODO: let's share these two event loops with the UDP pool as well.
+        // final EventLoopGroup workerGroup = new NioEventLoopGroup();
+
         // final ServerHandler handler = new ServerHandler();
 
+        final ChannelFuture f = NettyBootstrap.getServerBootstrap().bind(config.getListenAddress()).sync();
+        f.channel().closeFuture().sync();
+
+        /*
         final TunnelPacketStreamEncoder encoder = new TunnelPacketStreamEncoder();
         try {
             final ServerBootstrap b = new ServerBootstrap();
@@ -62,6 +60,7 @@ public class Server {
             workerGroup.shutdownGracefully();
             bossGroup.shutdownGracefully();
         }
+                    */
     }
 
     public static void main(final String... args) throws Exception {

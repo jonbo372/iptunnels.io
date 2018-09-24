@@ -63,12 +63,12 @@ public class ClientSideBackbone extends ChannelInboundHandlerAdapter implements 
 
     @Override
     public void channelRegistered(final ChannelHandlerContext ctx) throws Exception {
-        System.err.println("TunnelBackbone: channelRegistered");
+        // System.err.println("TunnelBackbone: channelRegistered");
     }
 
     @Override
     public void channelUnregistered(final ChannelHandlerContext ctx) throws Exception {
-        System.err.println("TunnelBackbone: channelUnregistered");
+        // System.err.println("TunnelBackbone: channelUnregistered");
         closeTunnels();
     }
 
@@ -84,17 +84,20 @@ public class ClientSideBackbone extends ChannelInboundHandlerAdapter implements 
     }
 
     @Override
+    public void channelReadComplete(final ChannelHandlerContext ctx) throws Exception {
+        // System.err.println("ClientSdieBackbone: channelReadComplete");
+        // ctx.flush();
+        ctx.fireChannelReadComplete();
+    }
+
+    @Override
     public void channelRead(final ChannelHandlerContext ctx, final Object msg) {
         // System.err.println("TunnelBackbone: pkt received. Looking up tunnel and disptaching");
         final TunnelPacket pkt = (TunnelPacket)msg;
         if (pkt.isPayload()) {
             final PayloadPacket payload = pkt.toPayload();
             final Tunnel tunnel = tunnels.get(payload.getTunnelId());
-            System.out.println("ClientSideBackbone: " + new String(payload.getBody()));
-
-            // TODO: with multiple tunnels we will have to do the multiplexing here to the correct tunnel.
-            // the pipelines won't do since we can't have all tunnels in the pipeline.
-            // ctx.fireChannelRead(msg);
+            // System.out.println("ClientSideBackbone: " + new String(payload.getBody()));
             tunnel.process(pkt);
         } else if (pkt.isHello()) {
             System.err.println("ClientSideBackbone: Why the fuck do I have a Hello pkt?");
@@ -135,7 +138,7 @@ public class ClientSideBackbone extends ChannelInboundHandlerAdapter implements 
     public CompletionStage<HiPacket> hello() {
         final CompletableFuture<HiPacket> future = new CompletableFuture<>();
         final int transactionId = random.nextInt();
-        System.err.println("ClientSideBackbone: hello transactionId " + transactionId);
+        // System.err.println("ClientSideBackbone: hello transactionId " + transactionId);
         outstandingHelloTransactions.put(transactionId, future);
         channel.writeAndFlush(TunnelPacket.hello(transactionId));
         return future;
@@ -144,8 +147,13 @@ public class ClientSideBackbone extends ChannelInboundHandlerAdapter implements 
     @Override
     public void tunnel(final PayloadPacket pkt) {
         if (pkt != null) {
-            channel.writeAndFlush(pkt);
+            channel.writeAndFlush(pkt, channel.voidPromise());
         }
+    }
+
+    @Override
+    public void flushTunnel() {
+        channel.flush();
     }
 
     @Override

@@ -44,6 +44,12 @@ public class ServerSideBackbone extends ChannelInboundHandlerAdapter implements 
     }
 
     @Override
+    public void channelWritabilityChanged(final ChannelHandlerContext ctx) throws Exception {
+        System.err.println("ServerSideBackbone: channelWriteabilityChanged");
+        ctx.fireChannelWritabilityChanged();
+    }
+
+    @Override
     public void channelUnregistered(final ChannelHandlerContext ctx) throws Exception {
         System.err.println("ServerSideBackbone: channelUnregistered");
         closeTunnels();
@@ -67,24 +73,25 @@ public class ServerSideBackbone extends ChannelInboundHandlerAdapter implements 
             // ctx.fireChannelRead(msg);
             tunnel.process(pkt);
         } else if (pkt.isHello()) {
-            System.err.println("ServerSideBackbone: Ok, need to take care of the Hello now");
             processHello(ctx, pkt.toHello());
         } else if (pkt.isHi()) {
             System.err.println("ServerSideBackbone: Why the fuck to I have a HI packet");
-            // actually we can get a HI packet because it is written
-            // System.err.println("How the fuck can I get a HI packet?");
-            // ctx.fireChannelRead(pkt);
-            final Tunnel tunnel = tunnels.get(pkt.toHi().tunnelId());
-            tunnel.process(pkt);
         }
     }
 
+    @Override
+    public void channelReadComplete(final ChannelHandlerContext ctx) throws Exception {
+        ctx.fireChannelReadComplete();
+        ctx.flush();
+    }
+
     private void processHello(final ChannelHandlerContext ctx, final HelloPacket pkt) {
-        // final String ip = "104.248.212.248";
+        final String ip = "104.248.212.248";
         // final String ip = "10.46.0.5";
-        final String ip = "10.36.10.27";
-        Tunnel.of(this).bind(ip, 7890).thenAccept(tunnel -> {
-            System.err.println("ServerSideBackbone: my tunnel is up");
+        // final String ip = "10.36.10.27";
+        // final String ip = "127.0.0.1";
+        final int port = 5683;
+        Tunnel.of(this).bind(ip, port).thenAccept(tunnel -> {
             tunnels.put(tunnel.getId(), tunnel);
             final String url = tunnel.getLocalHost() + ":" + tunnel.getLocalPort();
             ctx.writeAndFlush(TunnelPacket.hi(pkt.transactionId(), tunnel.getId(), url));
@@ -98,12 +105,29 @@ public class ServerSideBackbone extends ChannelInboundHandlerAdapter implements 
         });
     }
 
+    private static void sleep(final int millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (final InterruptedException e) {
+            // ignore
+        }
+    }
+
     @Override
     public void tunnel(final PayloadPacket pkt) {
         if (pkt != null) {
-            System.out.println("ServerSideBackbone: " + new String(pkt.getBody()));
-            channel.writeAndFlush(pkt);
+            // System.out.println("ServerSideBackbone: Tunneling " + new String(pkt.getBody()));
+            if (!channel.isWritable()) {
+                System.err.println("Turns out the channel isn't writable at this point in time!");
+            }
+            channel.writeAndFlush(pkt, channel.voidPromise());
+            // channel.write(pkt, channel.voidPromise());
         }
+    }
+
+    @Override
+    public void flushTunnel() {
+        channel.flush();
     }
 
     @Override

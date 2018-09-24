@@ -18,4 +18,6 @@ public interface TunnelBackbone {
 
     void tunnel(final PayloadPacket pkt);
 
+    void flushTunnel();
+
 }
