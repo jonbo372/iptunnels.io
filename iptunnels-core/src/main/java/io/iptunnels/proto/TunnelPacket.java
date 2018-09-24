@@ -2,12 +2,12 @@ package io.iptunnels.proto;
 
 public interface TunnelPacket {
 
-    static HelloPacket hello() {
-        return new HelloPacket.HelloPacketVersion1();
+    static HelloPacket hello(final int transactionId) {
+        return new HelloPacket.HelloPacketVersion1(transactionId);
     }
 
-    static HiPacket hi(final int tunnelId, final String url) {
-        return new HiPacket.HiPacketVersion1(tunnelId, url);
+    static HiPacket hi(final int transactionId, final int tunnelId, final String url) {
+        return new HiPacket.HiPacketVersion1(transactionId, tunnelId, url);
     }
 
     static PayloadPacket payload(final int tunnelId, final byte[] data) {

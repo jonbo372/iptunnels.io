@@ -18,6 +18,7 @@ public class TunnelFramerVersion1 implements TunnelFramer {
     // TODO: need to move these into their own class
     // Stuff needed for when parsing HI message
     private HiDecodingState hiState = HiDecodingState.HEADER;
+    private int transactionId;
     private int tunnelId;
     private int breakoutLength;
 
@@ -77,7 +78,8 @@ public class TunnelFramerVersion1 implements TunnelFramer {
     private Optional<TunnelPacket> processHi(final ByteBuf in) {
         switch (hiState) {
             case HEADER:
-                if (in.readableBytes() >= 4) {
+                if (in.readableBytes() >= 4 * 3) {
+                    transactionId = in.readInt();
                     tunnelId = in.readInt();
                     breakoutLength = in.readInt();
                     hiState = HiDecodingState.URL;
@@ -87,7 +89,8 @@ public class TunnelFramerVersion1 implements TunnelFramer {
                 if (in.readableBytes() >= breakoutLength) {
                     final byte[] rawUrl = new byte[breakoutLength];
                     in.readBytes(rawUrl);
-                    final TunnelPacket hi = TunnelPacket.hi(tunnelId, new String(rawUrl));
+                    final TunnelPacket hi = TunnelPacket.hi(transactionId, tunnelId, new String(rawUrl));
+                    transactionId = 0;
                     tunnelId = 0;
                     breakoutLength = 0;
                     hiState = HiDecodingState.HEADER;
@@ -144,7 +147,12 @@ public class TunnelFramerVersion1 implements TunnelFramer {
     }
 
     private Optional<TunnelPacket> processHello(final ByteBuf in) {
-        return Optional.of(TunnelPacket.hello());
+        if (in.readableBytes() < 4) {
+            return Optional.empty();
+        }
+        final int transactionId = in.readInt();
+        System.err.println("Processing HELLO packet with transaction id " + transactionId);
+        return Optional.of(TunnelPacket.hello(transactionId));
     }
 
     private enum DecodingState {

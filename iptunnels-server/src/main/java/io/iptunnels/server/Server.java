@@ -2,7 +2,7 @@ package io.iptunnels.server;
 
 import io.iptunnels.Clock;
 import io.iptunnels.config.ConfigurationEnvironment;
-import io.iptunnels.netty.TunnelBackbone;
+import io.iptunnels.netty.ServerSideBackbone;
 import io.iptunnels.netty.TunnelPacketStreamDecoder;
 import io.iptunnels.netty.TunnelPacketStreamEncoder;
 import io.netty.bootstrap.ServerBootstrap;
@@ -45,7 +45,7 @@ public class Server {
                             pipeline.addLast("decoder", new TunnelPacketStreamDecoder());
                             pipeline.addLast("encoder", encoder);
                             // pipeline.addLast("init", handler);
-                            pipeline.addLast("backbone", new TunnelBackbone(ch));
+                            pipeline.addLast("backbone", new ServerSideBackbone(ch));
                         }
                     })
                     .option(ChannelOption.SO_BACKLOG, 128)

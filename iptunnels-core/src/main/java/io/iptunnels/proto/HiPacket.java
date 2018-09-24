@@ -1,5 +1,6 @@
 package io.iptunnels.proto;
 
+import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 
 /**
@@ -10,9 +11,13 @@ import java.nio.ByteBuffer;
 public interface HiPacket extends TunnelPacket {
 
 
+    int transactionId();
+
     int tunnelId();
 
     String breakoutAddress();
+
+    InetSocketAddress breakoutAddressAsSocketAddress();
 
     @Override
     default boolean isHi() {
@@ -32,24 +37,29 @@ public interface HiPacket extends TunnelPacket {
 
         private final int tunnelId;
 
+        private final int transactionId;
+
         private final String breakoutAddress;
 
-        public HiPacketVersion1(final int tunnelId, final String url) {
+        public HiPacketVersion1(final int transactionId, final int tunnelId, final String url) {
             final byte[] urlBytes = url.getBytes();
-            final int size = header.length + 4 + 4 + urlBytes.length;
+            final int size = header.length + 4 + 4 + 4 + urlBytes.length;
             final ByteBuffer buffer = ByteBuffer.allocate(size);
             buffer.put(header);
+            buffer.putInt(transactionId);
             buffer.putInt(tunnelId);
             buffer.putInt(urlBytes.length);
             buffer.put(urlBytes);
             raw = buffer.array();
 
+            this.transactionId = transactionId;
             this.tunnelId = tunnelId;
             this.breakoutAddress = url;
         }
 
+        @Override
         public String toString() {
-            return "HI " + tunnelId + " " + breakoutAddress;
+            return "HI " + transactionId + " " + tunnelId + " " + breakoutAddress;
         }
 
         @Override
@@ -58,8 +68,18 @@ public interface HiPacket extends TunnelPacket {
         }
 
         @Override
+        public int transactionId() {
+            return transactionId;
+        }
+
+        @Override
         public int tunnelId() {
             return tunnelId;
+        }
+
+        public InetSocketAddress breakoutAddressAsSocketAddress() {
+            final String[] parts = breakoutAddress.split(":");
+            return new InetSocketAddress(parts[0], Integer.parseInt(parts[1]));
         }
 
         @Override

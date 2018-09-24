@@ -11,7 +11,6 @@ import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
 
-import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -40,21 +39,18 @@ public class BackboneFactory extends ChannelInitializer {
         final ChannelPipeline pipeline = ch.pipeline();
         pipeline.addLast("decoder", new TunnelPacketStreamDecoder());
         pipeline.addLast("encoder", encoder);
+        pipeline.addLast("backbone", new ClientSideBackbone(ch));
     }
 
-    public CompletionStage<TunnelBackbone> connect(final SocketAddress remote) {
-        final CompletableFuture<TunnelBackbone> future = new CompletableFuture();
+    public CompletionStage<ClientSideBackbone> connect(final SocketAddress remote) {
+        final CompletableFuture<ClientSideBackbone> future = new CompletableFuture();
         final ChannelFuture cf = bootstrap.connect(remote);
         cf.addListener(f -> {
             if (f.isSuccess()) {
                 final Channel channel = cf.channel();
-                final TunnelBackbone backbone = new TunnelBackbone(channel);
-                channel.pipeline().addLast("backbone", backbone);
-
-                // TODO: shouldn't actually complete the future until the Hello/Hi exchange
-                // has taken place...
-                backbone.hello();
-                future.complete(backbone);
+                // final ClientSideBackbone backbone = new ClientSideBackbone(channel);
+                // channel.pipeline().addLast("backbone", backbone);
+                future.complete((ClientSideBackbone)channel.pipeline().get("backbone"));
             } else {
                 future.completeExceptionally(new BackendInaccessibleException(remote, "Unable to connect to iptunnels server"));
             }
@@ -62,9 +58,5 @@ public class BackboneFactory extends ChannelInitializer {
 
         return future;
 
-    }
-
-    public CompletionStage<TunnelBackbone> connect(final String host, final int port) {
-        return connect(new InetSocketAddress(host, port));
     }
 }

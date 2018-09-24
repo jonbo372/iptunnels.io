@@ -1,6 +1,7 @@
 package io.iptunnels;
 
 import io.iptunnels.netty.BackboneFactory;
+import io.iptunnels.netty.ClientSideBackbone;
 import io.iptunnels.netty.NettyUdpTunnel;
 import io.iptunnels.netty.TunnelBackbone;
 import io.iptunnels.proto.TunnelPacket;
@@ -129,7 +130,7 @@ public interface Tunnel {
 
         public CompletionStage<Tunnel> bind(final InetSocketAddress localAddress) {
             final int tunnelId = random.nextInt();
-            return NettyUdpTunnel.withBackbone(backbone).withUdpBootstrap(UdpBootstrap.getBootstrap()).start(localAddress);
+            return NettyUdpTunnel.withTunnelId(tunnelId).withBackbone(backbone).withUdpBootstrap(UdpBootstrap.getBootstrap()).start(localAddress);
         }
 
     }
@@ -197,14 +198,55 @@ public interface Tunnel {
         public CompletionStage<Tunnel> connect() {
             System.err.println("Connecting to: " + serverAddress);
 
+            return factory.connect(serverAddress).thenCompose(backbone -> {
+                System.err.println("Tunnel: Got the first backbone, saying hello now");
+                final ClientSideBackbone tunnelBackbone = backbone;
+                return tunnelBackbone.hello().thenCompose(hi -> {
+                    System.err.println("Tunnel: Got Hi back for transaction " + hi.transactionId());
+                    final InetSocketAddress breakoutAddress = hi.breakoutAddressAsSocketAddress();
+                    return NettyUdpTunnel.withTunnelId(hi.tunnelId())
+                            .withBackbone(tunnelBackbone)
+                            .withBreakoutAddress(breakoutAddress)
+                            .withUdpBootstrap(UdpBootstrap.getBootstrap())
+                            .withTargetAddress(targetAddress)
+                            .start(0).thenApply(tunnel -> {
+                                // TODO: not nice
+                                ((ClientSideBackbone)tunnelBackbone).manageTunnel(tunnel);
+                                return tunnel;
+                            });
+
+                });
+            });
+
+
+            /*
+            return factory.connect(serverAddress).thenCompose(ClientSideBackbone::hello).thenCompose(hi -> {
+
+                ClientSideBackbone tunnelBackbone = null;
+                return NettyUdpTunnel.withTunnelId(hi.tunnelId()).withBackbone(tunnelBackbone).withUdpBootstrap(UdpBootstrap.getBootstrap())
+                        .withTargetAddress(targetAddress).start(0).thenApply(tunnel -> {
+                            // TODO: not nice
+                            ((ClientSideBackbone)tunnelBackbone).manageTunnel(tunnel);
+                            return tunnel;
+                        });
+
+            });
+
             return factory.connect(serverAddress).thenCompose(tunnelBackbone -> {
-                System.err.println("Got the backbone, now building up the tunnel " + tunnelBackbone.getChannel().id());
+                tunnelBackbone.hello().thenAccept(hi -> {
+                    System.err.println("Tunnel: Seems like the hello transaction completed for " + hi.transactionId());
+                });
+
+                // System.err.println("Got the backbone, now building up the tunnel");
+                // TODO: need to set the ID here...
                 return NettyUdpTunnel.withBackbone(tunnelBackbone).withUdpBootstrap(UdpBootstrap.getBootstrap())
                         .withTargetAddress(targetAddress).start(0).thenApply(tunnel -> {
-                            tunnelBackbone.manageTunnel(tunnel);
+                            // TODO: not nice
+                            ((ClientSideBackbone)tunnelBackbone).manageTunnel(tunnel);
                             return tunnel;
                         });
             });
+            */
             /*
             .exceptionally(throwable -> {
                 final CompletableFuture<Tunnel> failed = new CompletableFuture<>();

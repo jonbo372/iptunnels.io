@@ -2,7 +2,6 @@ package io.iptunnels.netty;
 
 import io.iptunnels.Transport;
 import io.iptunnels.Tunnel;
-import io.iptunnels.proto.HiPacket;
 import io.iptunnels.proto.PayloadPacket;
 import io.iptunnels.proto.TunnelPacket;
 import io.netty.bootstrap.Bootstrap;
@@ -18,7 +17,6 @@ import java.net.InetSocketAddress;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 @ChannelHandler.Sharable
@@ -38,28 +36,36 @@ public class NettyUdpTunnel extends ChannelInboundHandlerAdapter implements Tunn
 
     private final int tunnelId;
 
-    private final AtomicReference<HiPacket> tunnelConfig = new AtomicReference<>();
-
     /**
      * The target to which we will relay all data we receive over the backbone.
      */
-    private InetSocketAddress remoteTarget;
+    private final AtomicReference<InetSocketAddress> remoteTarget = new AtomicReference<>();
 
     /**
      * The local address we're listening for UDP on.
      */
     private final InetSocketAddress localUdpAddress;
 
+    /**
+     * This is the the so-called breakout address we have on the "other side" of the tunnel.
+     * If this {@link NettyUdpTunnel} is the one "on the other side" then it will be the same as
+     * the localUdpAddress.
+     */
+    private final InetSocketAddress breakoutAddress;
+
     // TODO: stupid - should simply not return the tunnel until the hi/hello exchange has taken place.
     private final CountDownLatch hiReceived = new CountDownLatch(1);
 
-    private NettyUdpTunnel(final Channel channel, final int tunnelId, final TunnelBackbone backbone, final InetSocketAddress remoteTarget) {
+    private NettyUdpTunnel(final Channel channel, final int tunnelId, final TunnelBackbone backbone, final InetSocketAddress remoteTarget, final InetSocketAddress breakoutAddress) {
         this.channel = channel;
         this.tunnelId = tunnelId;
         this.backbone = backbone;
-        this.remoteTarget = remoteTarget;
+        if (remoteTarget != null) {
+            this.remoteTarget.set(remoteTarget);
+        }
 
         localUdpAddress = (InetSocketAddress)channel.localAddress();
+        this.breakoutAddress = breakoutAddress;
     }
 
     /**
@@ -70,15 +76,11 @@ public class NettyUdpTunnel extends ChannelInboundHandlerAdapter implements Tunn
      * @param remoteTarget
      */
     public void setRemoteTarget(final InetSocketAddress remoteTarget) {
-        this.remoteTarget = remoteTarget;
+        this.remoteTarget.set(remoteTarget);
     }
 
     @Override
     public int getId() {
-        // TODO: change so that we always have the TunnelConfig HiPacket
-        if (tunnelConfig.get() != null) {
-            return tunnelConfig.get().tunnelId();
-        }
         return tunnelId;
     }
 
@@ -99,19 +101,12 @@ public class NettyUdpTunnel extends ChannelInboundHandlerAdapter implements Tunn
 
     @Override
     public InetSocketAddress getTunnelAddress() {
-        try {
-            hiReceived.await(3000, TimeUnit.MILLISECONDS);
-        } catch (final InterruptedException e) {
-            // ignore
-        }
-        final String[] parts = tunnelConfig.get().breakoutAddress().split(":") ;
-        final InetSocketAddress address = new InetSocketAddress(parts[0], Integer.parseInt(parts[1]));
-        return address;
+        return breakoutAddress;
     }
 
     @Override
     public InetSocketAddress getTargetAddress() {
-        return remoteTarget;
+        return remoteTarget.get();
     }
 
     @Override
@@ -151,18 +146,15 @@ public class NettyUdpTunnel extends ChannelInboundHandlerAdapter implements Tunn
     private void processUdpPacket(final ChannelHandlerContext ctx, final DatagramPacket udp) {
         final InetSocketAddress sender = udp.sender();
         if (accept(sender)) {
-            if (remoteTarget == null) {
-                remoteTarget = sender;
-            }
-
-            if (!sender.equals(remoteTarget)) {
-                remoteTarget = sender;
+            if (!sender.equals(remoteTarget.get())) {
+                remoteTarget.set(sender);
             }
 
             final ByteBuf content = udp.content();
             final byte[] rawData = new byte[content.readableBytes()];
             content.getBytes(0, rawData);
             // final PayloadPacket pkt = TunnelPacket.payload(backbone.getTunnelId(), rawData);
+            System.out.println(new String(rawData));
             final PayloadPacket pkt = TunnelPacket.payload(tunnelId, rawData);
             backbone.tunnel(pkt);
         }
@@ -170,13 +162,13 @@ public class NettyUdpTunnel extends ChannelInboundHandlerAdapter implements Tunn
 
     @Override
     public void process(final TunnelPacket pkt) {
-        if (pkt.isPayload() && remoteTarget != null) {
+        final InetSocketAddress target = remoteTarget.get();
+        if (pkt.isPayload() && target != null) {
             final ByteBuf data = toByteBuf(channel, pkt.toPayload().getBody());
-            final DatagramPacket udp = new DatagramPacket(data, remoteTarget);
+            final DatagramPacket udp = new DatagramPacket(data, target);
             channel.writeAndFlush(udp);
         } else if (pkt.isHi()) {
-            tunnelConfig.set(pkt.toHi());
-            hiReceived.countDown();
+            System.err.println("NettyUdpTunnel: Why am I getting a HI message still?");
         }
     }
 
@@ -186,8 +178,12 @@ public class NettyUdpTunnel extends ChannelInboundHandlerAdapter implements Tunn
         return buffer;
     }
 
-    public static Builder withBackbone(final TunnelBackbone backbone) {
-        return new Builder(backbone);
+    public static BackboneBuildStep withTunnelId(final int id) {
+        return backbone -> new Builder(id, backbone);
+    }
+
+    public interface BackboneBuildStep {
+        Builder withBackbone(TunnelBackbone backbone);
     }
 
     public static class Builder {
@@ -195,9 +191,11 @@ public class NettyUdpTunnel extends ChannelInboundHandlerAdapter implements Tunn
         private final TunnelBackbone backbone;
         private Bootstrap bootstrap;
         private InetSocketAddress remoteTarget;
-        private int tunnelId;
+        private InetSocketAddress breakoutAddress;
+        private final int tunnelId;
 
-        private Builder(final TunnelBackbone backbone) {
+        private Builder(final int tunnelId, final TunnelBackbone backbone) {
+            this.tunnelId = tunnelId;
             this.backbone = backbone;
         }
 
@@ -221,8 +219,8 @@ public class NettyUdpTunnel extends ChannelInboundHandlerAdapter implements Tunn
             return this;
         }
 
-        public Builder withId(final int id) {
-            tunnelId = id;
+        public Builder withBreakoutAddress(final InetSocketAddress breakoutAddress) {
+            this.breakoutAddress = breakoutAddress;
             return this;
         }
 
@@ -245,7 +243,7 @@ public class NettyUdpTunnel extends ChannelInboundHandlerAdapter implements Tunn
                 final ChannelFuture channelFuture = (ChannelFuture)f;
                 if (channelFuture.isSuccess()) {
                     final Channel channel = channelFuture.channel();
-                    final NettyUdpTunnel tunnel = new NettyUdpTunnel(channel, tunnelId, backbone, remoteTarget);
+                    final NettyUdpTunnel tunnel = new NettyUdpTunnel(channel, tunnelId, backbone, remoteTarget, breakoutAddress);
                     channel.pipeline().addLast("tunnel", tunnel);
 
                     // note that we have two different channels. This is the TCP channel going to
