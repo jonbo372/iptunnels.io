@@ -48,7 +48,7 @@ public class TunnelFramerVersion1 implements TunnelFramer {
                     break;
                 case UNKNOWN:
                     // TODO: throw exception instead...
-                    System.err.println("Ended up in a unknown decoding state, bailing out");
+                    logger.warn("Ended up in a unknown decoding state, bailing out");
                     ctx.close();
                     return Optional.empty();
                 default:
@@ -151,7 +151,6 @@ public class TunnelFramerVersion1 implements TunnelFramer {
             return Optional.empty();
         }
         final int transactionId = in.readInt();
-        System.err.println("Processing HELLO packet with transaction id " + transactionId);
         return Optional.of(TunnelPacket.hello(transactionId));
     }
 

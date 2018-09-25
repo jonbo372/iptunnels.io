@@ -45,7 +45,8 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <sl4j.version>1.7.2</sl4j.version>
+        <sl4j.version>1.7.25</sl4j.version>
+        <logback.version>1.2.3</logback.version>
         <mockito.version>1.9.5</mockito.version>
         <junit.version>4.11</junit.version>
         <jackson.version>2.5.3</jackson.version>
@@ -67,6 +68,13 @@
                 <groupId>org.slf4j</groupId>
                 <artifactId>slf4j-api</artifactId>
                 <version>${sl4j.version}</version>
+                <scope>compile</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>ch.qos.logback</groupId>
+                <artifactId>logback-classic</artifactId>
+                <version>${logback.version}</version>
                 <scope>compile</scope>
             </dependency>
 

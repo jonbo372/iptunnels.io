@@ -1,18 +1,12 @@
 package io.iptunnels;
 
+import io.iptunnels.logging.Console;
 import io.iptunnels.netty.BackboneFactory;
 import io.iptunnels.netty.ClientSideBackbone;
 import io.iptunnels.netty.NettyBootstrap;
 import io.iptunnels.netty.NettyUdpTunnel;
 import io.iptunnels.netty.TunnelBackbone;
 import io.iptunnels.proto.TunnelPacket;
-import io.netty.bootstrap.Bootstrap;
-import io.netty.channel.ChannelInitializer;
-import io.netty.channel.ChannelPipeline;
-import io.netty.channel.EventLoopGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
-import io.netty.channel.socket.DatagramChannel;
-import io.netty.channel.socket.nio.NioDatagramChannel;
 
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
@@ -29,8 +23,6 @@ public interface Tunnel {
         final URI uri = URI.create("http://" + serverAddress);
         final int port = uri.getPort();
         final String host = uri.getHost();
-        System.err.println(host);
-        System.err.println(port);
         return udp(host, port);
     }
 
@@ -136,40 +128,6 @@ public interface Tunnel {
 
     }
 
-    /**
-     * Stupid
-     */
-    class UdpBootstrap {
-
-        // should be injected.
-        private static final EventLoopGroup udpGroup = new NioEventLoopGroup();
-        private static final Bootstrap bootstrap = createUDPBootstrap();
-
-        public static Bootstrap getBootstrap() {
-            return bootstrap;
-        }
-
-        private static Bootstrap createUDPBootstrap() {
-            final Bootstrap b = new Bootstrap();
-            b.group(udpGroup)
-                    .channel(NioDatagramChannel.class)
-                    .handler(new ChannelInitializer<DatagramChannel>() {
-                        @Override
-                        protected void initChannel(final DatagramChannel ch) throws Exception {
-                            final ChannelPipeline pipeline = ch.pipeline();
-                                /*
-                                pipeline.addLast("decoder", new SipMessageDatagramDecoder(clock, vipAddress));
-                                pipeline.addLast("encoder", new SipMessageDatagramEncoder());
-                                for (int i = 0; i < handlers.size(); ++i) {
-                                    pipeline.addLast(handlerNames.get(i), handlers.get(i));
-                                }
-                                */
-                        }
-                    });
-            return b;
-        }
-    }
-
     class Builder {
 
         private final Transport transport;
@@ -197,13 +155,11 @@ public interface Tunnel {
         }
 
         public CompletionStage<Tunnel> connect() {
-            System.err.println("Connecting to: " + serverAddress);
+            Console.info("Connecting to iptunnels server at {}", serverAddress);
 
             return factory.connect(serverAddress).thenCompose(backbone -> {
-                System.err.println("Tunnel: Got the first backbone, saying hello now");
                 final ClientSideBackbone tunnelBackbone = backbone;
                 return tunnelBackbone.hello().thenCompose(hi -> {
-                    System.err.println("Tunnel: Got Hi back for transaction " + hi.transactionId());
                     final InetSocketAddress breakoutAddress = hi.breakoutAddressAsSocketAddress();
                     return NettyUdpTunnel.withTunnelId(hi.tunnelId())
                             .withBackbone(tunnelBackbone)
@@ -218,45 +174,6 @@ public interface Tunnel {
 
                 });
             });
-
-
-            /*
-            return factory.connect(serverAddress).thenCompose(ClientSideBackbone::hello).thenCompose(hi -> {
-
-                ClientSideBackbone tunnelBackbone = null;
-                return NettyUdpTunnel.withTunnelId(hi.tunnelId()).withBackbone(tunnelBackbone).withUdpBootstrap(UdpBootstrap.getBootstrap())
-                        .withTargetAddress(targetAddress).start(0).thenApply(tunnel -> {
-                            // TODO: not nice
-                            ((ClientSideBackbone)tunnelBackbone).manageTunnel(tunnel);
-                            return tunnel;
-                        });
-
-            });
-
-            return factory.connect(serverAddress).thenCompose(tunnelBackbone -> {
-                tunnelBackbone.hello().thenAccept(hi -> {
-                    System.err.println("Tunnel: Seems like the hello transaction completed for " + hi.transactionId());
-                });
-
-                // System.err.println("Got the backbone, now building up the tunnel");
-                // TODO: need to set the ID here...
-                return NettyUdpTunnel.withBackbone(tunnelBackbone).withUdpBootstrap(UdpBootstrap.getBootstrap())
-                        .withTargetAddress(targetAddress).start(0).thenApply(tunnel -> {
-                            // TODO: not nice
-                            ((ClientSideBackbone)tunnelBackbone).manageTunnel(tunnel);
-                            return tunnel;
-                        });
-            });
-            */
-            /*
-            .exceptionally(throwable -> {
-                final CompletableFuture<Tunnel> failed = new CompletableFuture<>();
-                failed.completeExceptionally(throwable);
-                return failed;
-            });
-            */
         }
-
     }
-
 }

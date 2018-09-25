@@ -11,8 +11,9 @@ import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
-import io.netty.channel.ChannelPromise;
 import io.netty.channel.socket.DatagramPacket;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.InetSocketAddress;
 import java.util.concurrent.CompletableFuture;
@@ -21,6 +22,8 @@ import java.util.concurrent.atomic.AtomicReference;
 
 @ChannelHandler.Sharable
 public class NettyUdpTunnel extends ChannelInboundHandlerAdapter implements Tunnel {
+
+    private static final Logger logger = LoggerFactory.getLogger(NettyUdpTunnel.class);
 
     /**
      * Our local UDP channel, which we will use when we send messages to the target.
@@ -111,7 +114,7 @@ public class NettyUdpTunnel extends ChannelInboundHandlerAdapter implements Tunn
         channel.close().addListener(f -> {
             if (!f.isSuccess()) {
                 // TODO: log and deal with it using real loggers.
-                System.err.println("Unable to shut down tunnel. Ports may linger");
+                logger.warn("Unable to shut down channel {}. Ports may linger", channel.id());
             }
         });
     }
@@ -128,15 +131,10 @@ public class NettyUdpTunnel extends ChannelInboundHandlerAdapter implements Tunn
 
     @Override
     public void channelRead(final ChannelHandlerContext ctx, final Object msg) {
-        if (msg instanceof TunnelPacket) {
-            System.err.println("NettyUdpTunnel: I shouldn't receive any tunnel packets through the backbone netty pipeline anymore");
-            // process((TunnelPacket)msg);
-        } else if (msg instanceof DatagramPacket) {
+        if (msg instanceof DatagramPacket) {
             processUdpPacket(ctx, (DatagramPacket)msg);
         } else {
-            // TODO: log or something.
-            // unknown packet, dropping...
-            System.err.println("[ERROR] NettyUdpTunnel Uknown packet type received");
+            logger.warn("Unknown packet of type {} received, dropping", msg.getClass().getName());
         }
     }
 
@@ -145,7 +143,6 @@ public class NettyUdpTunnel extends ChannelInboundHandlerAdapter implements Tunn
         // ctx.flush();
         backbone.flushTunnel();
         ctx.fireChannelReadComplete();
-        // System.err.println("NettyUdpTunnel: channelReadComplete");
     }
 
     private void processUdpPacket(final ChannelHandlerContext ctx, final DatagramPacket udp) {
@@ -158,9 +155,6 @@ public class NettyUdpTunnel extends ChannelInboundHandlerAdapter implements Tunn
             final ByteBuf content = udp.content();
             final byte[] rawData = new byte[content.readableBytes()];
             content.getBytes(0, rawData);
-            // final PayloadPacket pkt = TunnelPacket.payload(backbone.getTunnelId(), rawData);
-            // System.out.println(new String(rawData));
-
             final PayloadPacket pkt = TunnelPacket.payload(tunnelId, rawData);
             backbone.tunnel(pkt);
         }
@@ -172,14 +166,9 @@ public class NettyUdpTunnel extends ChannelInboundHandlerAdapter implements Tunn
         if (pkt.isPayload() && target != null) {
             final ByteBuf data = toByteBuf(channel, pkt.toPayload().getBody());
             final DatagramPacket udp = new DatagramPacket(data, target);
-            final ChannelPromise p = channel.newPromise();
-            p.addListener(f -> {
-
-            });
-            channel.writeAndFlush(udp, p);
-            // channel.writeAndFlush(udp);
-        } else if (pkt.isHi()) {
-            System.err.println("NettyUdpTunnel: Why am I getting a HI message still?");
+            channel.writeAndFlush(udp, channel.voidPromise());
+        } else {
+            logger.warn("Unexpected TunnelPacket received of type {}. Dropping.", pkt.getClass().getName());
         }
     }
 

@@ -1,14 +1,19 @@
 package io.iptunnels.netty;
 
 import io.iptunnels.Tunnel;
+import io.iptunnels.config.PublicTunnelConfig;
+import io.iptunnels.config.ServerConfig;
 import io.iptunnels.proto.HelloPacket;
 import io.iptunnels.proto.PayloadPacket;
 import io.iptunnels.proto.TunnelPacket;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.BindException;
+import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -22,9 +27,20 @@ import java.util.concurrent.ConcurrentMap;
  */
 public class ServerSideBackbone extends ChannelInboundHandlerAdapter implements TunnelBackbone {
 
+    private static final Logger logger = LoggerFactory.getLogger(ServerSideBackbone.class);
+
+    private final ServerConfig config;
+
     private final Channel channel;
 
     private final ConcurrentMap<Integer, Tunnel> tunnels = new ConcurrentHashMap<>();
+
+    private final Random random = new Random(System.currentTimeMillis());
+
+    public ServerSideBackbone(final ServerConfig config, final Channel channel) {
+        this.config = config;
+        this.channel = channel;
+    }
 
     @Override
     public void disconnect() {
@@ -35,47 +51,37 @@ public class ServerSideBackbone extends ChannelInboundHandlerAdapter implements 
         tunnels.forEach((channelId, tunnel) -> {
             tunnel.shutdown();
         });
-
     }
+
 
     @Override
     public void channelRegistered(final ChannelHandlerContext ctx) throws Exception {
-        System.err.println("ServerSideBackbone: channelRegistered");
+        logger.info("Channel {} registered. Remote host {}", ctx.channel().id(), ctx.channel().remoteAddress());
     }
 
     @Override
     public void channelWritabilityChanged(final ChannelHandlerContext ctx) throws Exception {
-        System.err.println("ServerSideBackbone: channelWriteabilityChanged");
+        logger.debug("Channel changed writability");
         ctx.fireChannelWritabilityChanged();
     }
 
     @Override
     public void channelUnregistered(final ChannelHandlerContext ctx) throws Exception {
-        System.err.println("ServerSideBackbone: channelUnregistered");
+        logger.info("Channel {} unregistered. Remote host {}", ctx.channel().id(), ctx.channel().remoteAddress());
         closeTunnels();
     }
 
 
-    public ServerSideBackbone(final Channel channel) {
-        this.channel = channel;
-    }
-
     @Override
     public void channelRead(final ChannelHandlerContext ctx, final Object msg) {
-        // System.err.println("TunnelBackbone: pkt received. Looking up tunnel and disptaching");
         final TunnelPacket pkt = (TunnelPacket)msg;
         if (pkt.isPayload()) {
             final PayloadPacket payload = pkt.toPayload();
-            final Tunnel tunnel = tunnels.get(payload.getTunnelId());
-
-            // TODO: with multiple tunnels we will have to do the multiplexing here to the correct tunnel.
-            // the pipelines won't do since we can't have all tunnels in the pipeline.
-            // ctx.fireChannelRead(msg);
-            tunnel.process(pkt);
+            tunnels.get(payload.getTunnelId()).process(pkt);
         } else if (pkt.isHello()) {
             processHello(ctx, pkt.toHello());
-        } else if (pkt.isHi()) {
-            System.err.println("ServerSideBackbone: Why the fuck to I have a HI packet");
+        } else {
+            logger.warn("Unexpected packet received {}", pkt);
         }
     }
 
@@ -86,42 +92,44 @@ public class ServerSideBackbone extends ChannelInboundHandlerAdapter implements 
     }
 
     private void processHello(final ChannelHandlerContext ctx, final HelloPacket pkt) {
-        final String ip = "104.248.212.248";
-        // final String ip = "10.46.0.5";
-        // final String ip = "10.36.10.27";
-        // final String ip = "127.0.0.1";
-        final int port = 5683;
+
+        // always honor the port in the hello packet first and foremost, if configured
+        // to do so...
+        final PublicTunnelConfig tunnelConfig = config.getTunnelConfig();
+        final int port;
+        if (tunnelConfig.isUseClientSuggestedPort() && pkt.port() > 0) {
+            port = pkt.port();
+        } else if (config.getTunnelConfig().isUsePortRange()) {
+            final int start = tunnelConfig.getStartPortRange();
+            final int stop = tunnelConfig.getStopPortRange();
+            port = random.nextInt(stop - start) + start;
+        } else {
+            port = tunnelConfig.getFixedPort();
+        }
+
+        final String ip = tunnelConfig.getIp();
+
         Tunnel.of(this).bind(ip, port).thenAccept(tunnel -> {
             tunnels.put(tunnel.getId(), tunnel);
             final String url = tunnel.getLocalHost() + ":" + tunnel.getLocalPort();
             ctx.writeAndFlush(TunnelPacket.hi(pkt.transactionId(), tunnel.getId(), url));
         }).exceptionally(t -> {
             if (t.getCause() instanceof BindException) {
-                System.err.println("Seems like we didn't clean up last time");
+                logger.warn("Unable to bind to {}:{}", ip == null ? "<any>" : ip, port);
             } else {
-                t.printStackTrace();
+                logger.warn("Unable to bind to {}:{} due to unknown exception {}", ip == null ? "<any>" : ip, port, t);
             }
             return null;
         });
     }
 
-    private static void sleep(final int millis) {
-        try {
-            Thread.sleep(millis);
-        } catch (final InterruptedException e) {
-            // ignore
-        }
-    }
-
     @Override
     public void tunnel(final PayloadPacket pkt) {
         if (pkt != null) {
-            // System.out.println("ServerSideBackbone: Tunneling " + new String(pkt.getBody()));
             if (!channel.isWritable()) {
-                System.err.println("Turns out the channel isn't writable at this point in time!");
+                logger.warn("The channel {} is not writable, packet is being dropped");
             }
             channel.writeAndFlush(pkt, channel.voidPromise());
-            // channel.write(pkt, channel.voidPromise());
         }
     }
 
@@ -132,7 +140,7 @@ public class ServerSideBackbone extends ChannelInboundHandlerAdapter implements 
 
     @Override
     public void exceptionCaught(final ChannelHandlerContext ctx, final Throwable cause) {
-        cause.printStackTrace();
+        logger.warn("Unhandled exception caught by Netty handlers. Closing connection.", cause);
         ctx.close();
     }
 

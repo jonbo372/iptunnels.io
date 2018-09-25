@@ -8,7 +8,11 @@ public class ClientConfig {
     private final int version = 1;
 
     @JsonProperty("server")
-    private final String server = "iptunnels.io:8000";
+    private String server = "iptunnels.io:8000";
+
+    public void setServer(String server) {
+        this.server = server;
+    }
 
     public String getServer() {
         return server;

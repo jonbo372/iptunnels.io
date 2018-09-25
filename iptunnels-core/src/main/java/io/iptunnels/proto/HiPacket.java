@@ -77,9 +77,12 @@ public interface HiPacket extends TunnelPacket {
             return tunnelId;
         }
 
+        @Override
         public InetSocketAddress breakoutAddressAsSocketAddress() {
-            final String[] parts = breakoutAddress.split(":");
-            return new InetSocketAddress(parts[0], Integer.parseInt(parts[1]));
+            final int index = breakoutAddress.lastIndexOf(':');
+            final String host = breakoutAddress.substring(0, index);
+            final int port = Integer.parseInt(breakoutAddress.substring(index + 1, breakoutAddress.length()));
+            return new InetSocketAddress(host, port);
         }
 
         @Override

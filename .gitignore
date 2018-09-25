@@ -1,3 +1,5 @@
+*.log
+
 # Make sure to ignore Eclipse files
 .classpath
 .project
@@ -5,6 +7,7 @@
 
 # Where maven compiles by default
 target
+dependency-reduced-pom.xml
 
 # Java Files that should be ignored
 *.class

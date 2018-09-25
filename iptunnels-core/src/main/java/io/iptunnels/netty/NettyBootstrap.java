@@ -1,5 +1,6 @@
 package io.iptunnels.netty;
 
+import io.iptunnels.config.ServerConfig;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelInitializer;
@@ -18,7 +19,8 @@ public class NettyBootstrap {
     private static final EventLoopGroup workerGroup = new NioEventLoopGroup();
 
     private static final Bootstrap bootstrap = createUDPBootstrap();
-    private static final ServerBootstrap serverBootstrap = createTcpBootstrap();
+
+    private static ServerBootstrap serverBootstrap;
 
     private static final TunnelPacketStreamEncoder encoder = new TunnelPacketStreamEncoder();
 
@@ -26,11 +28,22 @@ public class NettyBootstrap {
         return bootstrap;
     }
 
-    public static ServerBootstrap getServerBootstrap() {
-        return serverBootstrap;
+    public static synchronized ServerBootstrap getServerBootstrap() {
+        if (serverBootstrap != null) {
+            return serverBootstrap;
+        }
+        throw new NullPointerException("The ServerBootstrap has not been initialized just yet");
     }
 
-    private static ServerBootstrap createTcpBootstrap() {
+    public static synchronized void initServerBootstrap(final ServerConfig config) {
+        if (serverBootstrap != null) {
+            return;
+        }
+
+        serverBootstrap = createTcpBootstrap(config);
+    }
+
+    public static ServerBootstrap createTcpBootstrap(final ServerConfig config) {
         final ServerBootstrap b = new ServerBootstrap();
 
         b.group(bossGroup, workerGroup)
@@ -41,7 +54,7 @@ public class NettyBootstrap {
                         final ChannelPipeline pipeline = ch.pipeline();
                         pipeline.addLast("decoder", new TunnelPacketStreamDecoder());
                         pipeline.addLast("encoder", encoder);
-                        pipeline.addLast("backbone", new ServerSideBackbone(ch));
+                        pipeline.addLast("backbone", new ServerSideBackbone(config, ch));
                     }
                 })
                 .option(ChannelOption.SO_BACKLOG, 128)

@@ -64,13 +64,25 @@ public interface ConfigurationEnvironment<T> {
          * By default the name of this file is simply "config" and is stored under
          * the project configuration home.
          */
-        private final String configFile = DEFAULT_CONFIG_FILE;
+        private String configFile = DEFAULT_CONFIG_FILE;
 
         private final Class<T> configClass;
 
         private Builder(final Class<T> configClass, final String projectName) {
             this.configClass = configClass;
             this.projectName = projectName;
+        }
+
+        /**
+         * Set the name of the configuration file. By default it is "config"
+         * but if you want to change that, change it here.
+         *
+         * @param name
+         * @return
+         */
+        public Builder withConfigFile(final String name) {
+            this.configFile = name;
+            return this;
         }
 
         /**
