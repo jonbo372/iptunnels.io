@@ -16,7 +16,7 @@
 <!-- For messages more aimed towards a human user -->
 <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
     <encoder>
-        <pattern>%msg%n</pattern>
+        <pattern>%-5level %msg%n</pattern>
     </encoder>
 </appender>
 
